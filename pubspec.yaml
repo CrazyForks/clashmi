@@ -104,6 +104,7 @@ dependencies:
     path: ../clashmi-vpn-service/
 
 dev_dependencies:
+  build: 4.0.6
   source_gen: 4.2.3
   build_runner: 2.15.0
   flutter_launcher_icons: 0.14.4

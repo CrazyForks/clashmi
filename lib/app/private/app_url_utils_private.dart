@@ -5,7 +5,7 @@ abstract final class AppUrlUtilsPrivate {
 
   static String signQueryParams(
     String version,
-    int bodyLen,
+    String bodyLen,
     Map<String, dynamic> params,
   ) {
     return signQueryParams2(version, params, bodyLen: bodyLen);
@@ -14,7 +14,7 @@ abstract final class AppUrlUtilsPrivate {
   static String signQueryParams2(
     String version,
     Map<String, dynamic> params, {
-    int bodyLen = 0,
+    String bodyLen = "0",
   }) {
     if (!_loggedFallback) {
       _loggedFallback = true;
@@ -25,7 +25,7 @@ abstract final class AppUrlUtilsPrivate {
 
     final values = <String, String>{
       'version': version,
-      'body_len': bodyLen.toString(),
+      'body_len': bodyLen,
       for (final entry in params.entries) entry.key: entry.value.toString(),
     };
 

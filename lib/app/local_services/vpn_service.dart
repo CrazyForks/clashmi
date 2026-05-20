@@ -42,14 +42,14 @@ class VPNService {
   >
   onEventStateChanged = [];
 
-  static initABI() async {
+  static Future<void> initABI() async {
     if (Platform.isAndroid) {
       String abisAll = await FlutterVpnService.getABIs();
       _abis = abisAll.replaceAll("[", "").replaceAll("]", "").split(",");
     }
   }
 
-  static init() async {
+  static Future<void> init() async {
     PackageInfo packageInfo = await PackageInfo.fromPlatform();
     if (Platform.isWindows) {
       _runAsAdmin = await FlutterVpnService.isRunAsAdmin();

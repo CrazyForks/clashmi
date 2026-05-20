@@ -82,7 +82,7 @@ class _ProxyGroupScreenScreenState
     super.dispose();
   }
 
-  _loadSearch(String? textVal) {
+  void _loadSearch(String? textVal) {
     if ((textVal != null) && textVal.isNotEmpty) {
       String search = textVal.toLowerCase();
       final data = widget.nodes.where((app) {
@@ -97,7 +97,7 @@ class _ProxyGroupScreenScreenState
     }
   }
 
-  _clearSearch() {
+  void _clearSearch() {
     _searchController.clear();
     _searchedData = widget.nodes;
     setState(() {});
