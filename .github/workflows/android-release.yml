@@ -179,6 +179,10 @@ jobs:
         if: steps.upstream.outputs.skip_release != 'true'
         run: flutter pub get
 
+      - name: Generate code
+        if: steps.upstream.outputs.skip_release != 'true'
+        run: dart run build_runner build --delete-conflicting-outputs
+
       - name: Analyze
         if: steps.upstream.outputs.skip_release != 'true'
         run: flutter analyze

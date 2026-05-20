@@ -54,7 +54,7 @@ dependencies:
   flutter_plugin_android_lifecycle: 2.0.33 #file_picker image_picker
   file_picker: 10.3.10
   image: 4.8.0
-  image_picker: 1.2.1
+  image_picker: 1.2.2
   tray_manager: 0.5.2
   hotkey_manager: 0.2.3
   #accessibility_tools: 2.2.2
@@ -104,13 +104,14 @@ dependencies:
     path: ../clashmi-vpn-service/
 
 dev_dependencies:
+  source_gen: 4.2.3
+  build_runner: 2.15.0
   flutter_launcher_icons: 0.14.4
   flutter_test:
     sdk: flutter
 
-  flutter_lints: 5.0.0
-  build_runner: 2.4.13
-  json_serializable: 6.8.0 #dart run build_runner build --delete-conflicting-outputs
+  flutter_lints: 6.0.0
+  json_serializable: 6.11.4 #dart run build_runner build
 
 dependency_overrides:
   image_picker_ios: 0.8.13

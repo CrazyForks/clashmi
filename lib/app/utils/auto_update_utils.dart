@@ -15,7 +15,9 @@ import 'package:tuple/tuple.dart';
 
 class AutoupdateItem {
   String platform = "";
+
   List<String> channels = [];
+
   List<String> abis = [];
   String version = "";
   String url = "";
@@ -28,10 +30,12 @@ class AutoupdateItem {
       return;
     }
     platform = map["platform"] ?? "";
+
     var _channels = map["channels"] ?? [];
     for (var i in _channels) {
       channels.add(i as String);
     }
+
     var _abis = map["abis"] ?? [];
     for (var i in _abis) {
       abis.add(i as String);
@@ -201,7 +205,7 @@ abstract final class AutoupdateUtils {
     String url = RemoteConfigManager.getConfig().autoUpdate;
     final githubReleasesApi = isGithubReleasesApiUrl(url);
     if (withQueryParams && shouldAppendSignedQueryParams(url)) {
-      String queryParams = await AppUrlUtils.getQueryParamsForUrl(bodyLen: 1);
+      String queryParams = await AppUrlUtils.getQueryParamsForUrl(bodyLen: "1");
       url = UrlLauncherUtils.reorganizationUrl(url, queryParams) ?? url;
     }
 
