@@ -1,0 +1,78 @@
+name: Android Validate
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-android-arm64:
+    name: Validate Android arm64-v8a
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: clashmi
+
+    steps:
+      - name: Checkout Clash Mi
+        uses: actions/checkout@v6
+        with:
+          path: clashmi
+          fetch-depth: 0
+
+      - name: Checkout open VPN bridge
+        uses: actions/checkout@v6
+        with:
+          repository: cyenxchen/clashmi-vpn-service
+          path: clashmi-vpn-service
+          submodules: recursive
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.41.6"
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate code
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Build debug APK
+        run: flutter build apk --debug --target-platform android-arm64
+
+      - name: Upload debug APK on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-validate-debug-output
+          path: |
+            clashmi/build/app/outputs/**/*.apk
+            clashmi/build/app/outputs/logs/**
+          if-no-files-found: ignore
+          retention-days: 5

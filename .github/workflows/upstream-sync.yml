@@ -1,0 +1,151 @@
+name: Upstream Sync
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  repository_dispatch:
+    types:
+      - upstream-clashmi-updated
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-sync-main
+  cancel-in-progress: true
+
+jobs:
+  sync-upstream:
+    name: Sync KaringX/clashmi main
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: clashmi
+
+    steps:
+      - name: Checkout Clash Mi
+        uses: actions/checkout@v6
+        with:
+          path: clashmi
+          fetch-depth: 0
+          token: ${{ secrets.CLASHMI_DISPATCH_TOKEN || github.token }}
+
+      - name: Merge upstream into sync branch
+        id: sync
+        env:
+          GH_TOKEN: ${{ secrets.CLASHMI_DISPATCH_TOKEN || github.token }}
+          SYNC_BRANCH: sync/upstream-main
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/KaringX/clashmi.git
+          git fetch upstream main
+
+          base_sha="$(git rev-parse HEAD)"
+          upstream_sha="$(git rev-parse upstream/main)"
+          echo "base_sha=${base_sha}" >> "${GITHUB_OUTPUT}"
+          echo "upstream_sha=${upstream_sha}" >> "${GITHUB_OUTPUT}"
+
+          if git merge-base --is-ancestor "${upstream_sha}" HEAD; then
+            echo "No upstream changes found."
+            echo "result=no_changes" >> "${GITHUB_OUTPUT}"
+            {
+              echo "## Upstream sync"
+              echo ""
+              echo "No upstream changes found."
+              echo ""
+              echo "- Base: \`${base_sha}\`"
+              echo "- Upstream: \`${upstream_sha}\`"
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+
+          git checkout -B "${SYNC_BRANCH}" "${base_sha}"
+          if ! git merge --no-edit upstream/main; then
+            mkdir -p ../upstream-sync-debug
+            git diff --name-only --diff-filter=U | sort > ../upstream-sync-debug/conflicts.txt
+            git status --short > ../upstream-sync-debug/status.txt
+            git diff --cc > ../upstream-sync-debug/conflict.diff || true
+            conflicts="$(cat ../upstream-sync-debug/conflicts.txt)"
+
+            {
+              echo "## Upstream sync needs manual resolution"
+              echo ""
+              echo "Automatic merge from \`KaringX/clashmi@main\` could not be applied."
+              echo ""
+              echo "- Base: \`${base_sha}\`"
+              echo "- Upstream: \`${upstream_sha}\`"
+              echo ""
+              echo "Conflicts:"
+              sed 's/^/- `/' ../upstream-sync-debug/conflicts.txt | sed 's/$/`/'
+            } >> "${GITHUB_STEP_SUMMARY}"
+
+            echo "::warning::Upstream merge has conflicts: ${conflicts//$'\n'/, }"
+            echo "result=conflict" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          merged_sha="$(git rev-parse HEAD)"
+          git push origin "HEAD:${SYNC_BRANCH}" --force
+
+          pr_json="$(gh pr list \
+            --repo "${GITHUB_REPOSITORY}" \
+            --head "${SYNC_BRANCH}" \
+            --state open \
+            --json number,url \
+            --jq '.[0] // empty')"
+          if [[ -n "${pr_json}" ]]; then
+            pr_number="$(jq -r '.number' <<< "${pr_json}")"
+            pr_url="$(jq -r '.url' <<< "${pr_json}")"
+            gh pr edit "${pr_number}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "Sync upstream Clash Mi" \
+              --body "Automated sync from KaringX/clashmi@main.
+
+          Base: ${base_sha}
+          Upstream: ${upstream_sha}
+          Merged: ${merged_sha}
+
+          Validate this PR before merging; Android Release no longer runs upstream sync directly."
+          else
+            pr_url="$(gh pr create \
+              --repo "${GITHUB_REPOSITORY}" \
+              --base main \
+              --head "${SYNC_BRANCH}" \
+              --title "Sync upstream Clash Mi" \
+              --body "Automated sync from KaringX/clashmi@main.
+
+          Base: ${base_sha}
+          Upstream: ${upstream_sha}
+          Merged: ${merged_sha}
+
+          Validate this PR before merging; Android Release no longer runs upstream sync directly.")"
+          fi
+
+          echo "result=pr_ready" >> "${GITHUB_OUTPUT}"
+          echo "pr_url=${pr_url}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "## Upstream sync PR ready"
+            echo ""
+            echo "- PR: ${pr_url}"
+            echo "- Base: \`${base_sha}\`"
+            echo "- Upstream: \`${upstream_sha}\`"
+            echo "- Merged: \`${merged_sha}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload conflict diagnostics
+        if: steps.sync.outputs.result == 'conflict'
+        uses: actions/upload-artifact@v6
+        with:
+          name: upstream-sync-conflicts
+          path: upstream-sync-debug
+          retention-days: 14
