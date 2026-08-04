@@ -9,6 +9,7 @@ import 'package:clashmi/app/clash/clash_http_api.dart';
 import 'package:clashmi/app/local_services/vpn_service.dart';
 import 'package:clashmi/app/modules/diversion_template_manager.dart';
 import 'package:clashmi/app/modules/profile_manager.dart';
+import 'package:clashmi/app/modules/setting_manager.dart';
 import 'package:clashmi/app/runtime/return_result.dart';
 import 'package:clashmi/app/utils/app_utils.dart';
 import 'package:clashmi/app/utils/did.dart';
@@ -486,6 +487,7 @@ class ClashSettingManager {
       DisableKeepAlive: false,
       KeepAliveIdle: 30,
       KeepAliveInterval: 30,
+      GlobalUA: SettingManager.getConfig().userAgent(),
       FindProcessMode: Platform.isIOS
           ? ClashFindProcessMode.off.name
           : ClashFindProcessMode.always.name,
@@ -509,6 +511,7 @@ class ClashSettingManager {
       UnifiedDelay: _setting.UnifiedDelay,
       FindProcessMode: _setting.FindProcessMode,
       Profile: _setting.Profile,
+      GlobalUA: SettingManager.getConfig().userAgent(),
     );
   }
 
@@ -666,6 +669,9 @@ class ClashSettingManager {
     String filePath = await PathUtils.serviceCorePatchFinalPath();
     try {
       await File(filePath).writeAsString(result.data!, flush: true);
+      Log.i(
+        "ClashSettingManager.saveCorePatchFinal profile=$profileId overwrite=$overwrite globalUA=${SettingManager.getConfig().userAgent()}",
+      );
     } catch (err, stacktrace) {
       return ReturnResultError(err.toString());
     }

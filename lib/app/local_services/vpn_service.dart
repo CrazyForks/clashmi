@@ -24,6 +24,8 @@ import 'package:clashmi_vpn_service/state.dart';
 import 'package:clashmi_vpn_service/vpn_service.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as path;
+import 'package:yaml/yaml.dart';
+import 'package:yaml_writer/yaml_writer.dart';
 
 class VPNServiceSetServerOptions {
   String disabledServerError = "";
@@ -186,15 +188,17 @@ class VPNService {
     config.work_dir = PathUtils.appAssetsDir();
     config.cache_dir = await PathUtils.cacheDir();
     if (patch.type == ProfilePatchFileType.yaml) {
-      config.core_path = corePath;
+      config.core_path = await _prepareRuntimeCoreProfile(corePath);
       config.core_path_patch = await ProfilePatchManager.getProfilePatchPath(
         profile.patch,
       );
     } else {
-      config.core_path = await ProfilePatchManager.getProfilePatchScriptPath(
-        corePath,
-        profile.patch,
-      );
+      final patchedCorePath =
+          await ProfilePatchManager.getProfilePatchScriptPath(
+            corePath,
+            profile.patch,
+          );
+      config.core_path = await _prepareRuntimeCoreProfile(patchedCorePath);
     }
     config.core_path_patch_final = await PathUtils.serviceCorePatchFinalPath();
     config.log_path = await PathUtils.serviceLogFilePath();
@@ -272,6 +276,120 @@ class VPNService {
     }
 
     return reinstall;
+  }
+
+  static Future<String> _prepareRuntimeCoreProfile(String corePath) async {
+    if (!Platform.isAndroid) {
+      return corePath;
+    }
+
+    try {
+      final file = File(corePath);
+      if (!await file.exists()) {
+        Log.w("VPNService.prepareRuntimeCoreProfile missing core=$corePath");
+        return corePath;
+      }
+
+      final content = await file.readAsString();
+      if (content.isEmpty) {
+        Log.w("VPNService.prepareRuntimeCoreProfile empty core=$corePath");
+        return corePath;
+      }
+
+      final doc = loadYaml(content);
+      if (doc is! YamlMap) {
+        Log.w(
+          "VPNService.prepareRuntimeCoreProfile invalid yaml core=$corePath",
+        );
+        return corePath;
+      }
+
+      final data = jsonDecode(jsonEncode(doc));
+      if (data is! Map<String, dynamic>) {
+        Log.w(
+          "VPNService.prepareRuntimeCoreProfile invalid map core=$corePath",
+        );
+        return corePath;
+      }
+
+      final proxyProviders = data["proxy-providers"];
+      if (proxyProviders is! Map) {
+        return corePath;
+      }
+
+      final providerProxy = _defaultProxyProviderProxy(data);
+      if (providerProxy == null) {
+        Log.i(
+          "VPNService.prepareRuntimeCoreProfile no default proxy-provider proxy core=$corePath",
+        );
+        return corePath;
+      }
+
+      var updated = 0;
+      for (final entry in proxyProviders.entries) {
+        final provider = entry.value;
+        if (provider is Map &&
+            provider["type"] == "http" &&
+            (provider["proxy"] == null ||
+                provider["proxy"].toString().isEmpty)) {
+          provider["proxy"] = providerProxy;
+          updated++;
+        }
+      }
+
+      if (updated == 0) {
+        return corePath;
+      }
+
+      final runtimePath = await PathUtils.serviceCoreRuntimeProfileFilePath();
+      final value = YamlWriter(allowUnquotedStrings: true).write(data);
+      await File(runtimePath).writeAsString(value, flush: true);
+      Log.i(
+        "VPNService.prepareRuntimeCoreProfile proxyProvidersProxy=$providerProxy count=$updated runtime=$runtimePath",
+      );
+      return runtimePath;
+    } catch (err, stacktrace) {
+      Log.w("VPNService.prepareRuntimeCoreProfile exception ${err.toString()}");
+      return corePath;
+    }
+  }
+
+  static String? _defaultProxyProviderProxy(Map<String, dynamic> data) {
+    final proxyGroups = data["proxy-groups"];
+    if (proxyGroups is! List) {
+      return null;
+    }
+
+    final candidates = <String>[];
+    for (final item in proxyGroups) {
+      if (item is! Map) {
+        continue;
+      }
+      final name = item["name"]?.toString();
+      final proxies = item["proxies"];
+      if (name == null || name.isEmpty || proxies is! List || proxies.isEmpty) {
+        continue;
+      }
+      final hasUsableProxy = proxies.any((proxy) {
+        final value = proxy.toString();
+        return value != "DIRECT" &&
+            value != "REJECT" &&
+            value != "REJECT-DROP" &&
+            value != "PASS";
+      });
+      if (hasUsableProxy) {
+        candidates.add(name);
+      }
+    }
+
+    if (candidates.isEmpty) {
+      return null;
+    }
+
+    return candidates.firstWhere(
+      (name) => name.toLowerCase().contains("proxy"),
+      orElse: () => candidates.first,
+    );
   }
 
   static Future<ReturnResultError?> install() async {
@@ -414,7 +532,14 @@ class VPNService {
       await FlutterVpnService.setAlwaysOn(false);
     }
     await setSystemProxy(false);
-    await FlutterVpnService.stop();
+    // Do not report the switch as off until Android confirms that native
+    // listeners and the TUN interface have actually been released.
+    final result = await FlutterVpnService.stop(const Duration(seconds: 30));
+    if (result.type != VpnServiceWaitType.done) {
+      Log.w(
+        "VPNService.stop incomplete ${result.type}:${result.err?.message ?? 'unknown error'}",
+      );
+    }
 
     if (Platform.isWindows) {
       await uninstall();
